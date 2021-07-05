@@ -4,27 +4,14 @@ int main(int argc, char** argv)
 {
 	const string pb_model = "C:/data/model/model.pb";
 	const string pbtxt_model = "C:/data/model/model.pbtxt";
-	const string img_path = "C:/data/train/20130304_054304_04214.jpg";
+	//const string img_path = "C:/data/train/20130412_153327_37259.jpg";
+	const string img_path = "C:/data/venice_dataset/venice_dataset/06.png";
 	
 	Mat image = imread(img_path);
 	Net model = readNetFromTensorflow(pb_model, pbtxt_model);
 
 	setUseOptimized(true);
 	setNumThreads(4);
-
-	/*
-	Mat blob2 = blobFromImage(image, 1.0, Size(299, 299), Scalar(127.5, 127.5, 127.5), true, false);
-	model.setInput(blob2);
-	Mat output2 = model.forward();
-	std::cout
-		<< "output.size(): " << output2.size() << '\n'
-		<< "output.elemSize(): " << output2.elemSize() << '\n'
-		<< "output.data():\n";
-	for (size_t i = 0; i < output2.cols; ++i)
-		std::cout << output2.at<float>(0, i) << ' ';
-	cout << output2 << endl;
-	cout << "-----" << output2.at<float>(0,0); //<< "-------" << output2.at<double>(1,0) << "------";
-	*/
 
 	Ptr<SelectiveSearchSegmentation> ss = createSelectiveSearchSegmentation();
 	ss->setBaseImage(image);
@@ -34,25 +21,38 @@ int main(int argc, char** argv)
 	ss->process(rects);
 	cout << "Total Number of Region Proposals: " << rects.size() << endl;
 
-	while (1) {
 
-		Mat imOut = image.clone();
-		for (int i = 0; i < rects.size(); i++) {
-			if (i < 500){
-				Mat temp = imOut(rects[i]);
-				resize(temp, temp, Size(299, 299), INTER_AREA);
-				Mat blob = blobFromImage(temp, 1.0, Size(299, 299), Scalar(127.5, 127.5, 127.5), true, false);
-				model.setInput(blob);
-				Mat output = model.forward();
-				if(output.at<float>(0, 1) > 0.8)
-					rectangle(imOut, rects[i], Scalar(0, 255, 0));
+	vector<Rect> bounday_box;
+	vector<float> scores;
+	float th_score = 0.15;
+	
+	Mat imOut = image.clone();
+	for (int i = 0; i < rects.size(); i++) {
+		if (i < 800){
+			if (i % 20 == 0)
+				cout << i << endl;
+			Mat temp = imOut(rects[i]);
+			resize(temp, temp, Size(299, 299), INTER_AREA);
+			Mat blob = blobFromImage(temp, 1.0, Size(299, 299));
+			model.setInput(blob);
+			Mat output = model.forward();
+			if (output.at<float>(0, 0) > 0.6) {
+				bounday_box.push_back(rects[i]);
+				scores.push_back(output.at<float>(0, 0));
 			}
-			else
-				break;
 		}
-		imshow("Output", imOut);
-		break;
+		else
+			break;
 	}
+	vector<int> indices;
+	NMSBoxes(bounday_box, scores, 0.1f, 0.3f, indices);
+	for (size_t i = 0; i < indices.size(); i++) {
+		int idx = indices[i];
+		Rect box = bounday_box[idx];
+		rectangle(imOut, box, Scalar(0, 255, 0));
+	}
+
+	imshow("Output", imOut);
 	waitKey(0);
 
 }

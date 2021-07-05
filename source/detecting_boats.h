@@ -1,5 +1,5 @@
 #include <opencv2/opencv.hpp>
-#include <opencv2/dnn.hpp>
+#include <opencv2/dnn/dnn.hpp>
 #include <opencv2/dnn/all_layers.hpp>
 #include <opencv2/core.hpp>
 #include "opencv2/ximgproc/segmentation.hpp"
