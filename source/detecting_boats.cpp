@@ -2,52 +2,64 @@
 
 int main(int argc, char** argv)
 {
-
-	const string pb_model = "C:/data/model2/model.pb";
-	const string pbtxt_model = "C:/data/model2/model.pbtxt";
-	//const string img_path = "C:/data/train/20130412_153327_37259.jpg";
-	const string img_path = "C:/data/venice_dataset/venice_dataset/05.png";
+	Timer timer = Timer();
+	start(timer);
+	const string pb_model = "C:/data/model7/model.pb";
+	const string pbtxt_model = "C:/data/model7/model.pbtxt";
+	//const string img_path = "C:/data/train/20130412_153327_37259.jpg";   //20130412_153327_37259.jpg";20130412_084036_47574
+	const string img_path = "C:/data/venice_dataset/venice_dataset/01.png";
+	//const string img_path = "C:/data/Kaggle_ships/06.jpg";
 	
+	//setUseOptimized(true);
+	//setNumThreads(4);
+
 	Mat image = imread(img_path);
 	Mat imOut = image.clone();
 	Net model = readNetFromTensorflow(pb_model, pbtxt_model);
 
+	
+
 	//Mat result;
 	//preprocess_image(image, result, 94, Range(25, 50), Range(25, 50), 10);
 	/*Ptr<CLAHE> clahe = createCLAHE();
-	clahe->setClipLimit(20);
+	clahe->setClipLimit(1);
 
 	Mat fin;
 	cvtColor(image, fin, COLOR_BGR2GRAY);
 	clahe->apply(fin, fin);
-	imshow("Output", fin);
-	waitKey(0);
-	cvtColor(fin, image, COLOR_GRAY2BGR);*/
-	Mat fin;
+	//imshow("Output", fin);
+	//waitKey(0);
+	cvtColor(fin, image, COLOR_GRAY2BGR);
+	*/
+	GaussianBlur(image, image, Size(7,7), 9,9, BORDER_DEFAULT);
+	
+	/*Mat fin;
 	cvtColor(image, fin, COLOR_BGR2GRAY);
 	equalizeHist(fin, fin);
-	imshow("Output", fin);
-	waitKey(0);
-	cvtColor(fin, image, COLOR_GRAY2BGR);
-	GaussianBlur(image, image, Size( 3,3 ), 11, 11, BORDER_DEFAULT);
+	//imshow("Output", fin);
+	//waitKey(0);
+	cvtColor(fin, image, COLOR_GRAY2BGR);*/
+	
+	Mat processed_image;
+	preProcessingImage(Mat image, Mat &processed_image)
 
 	Mat fres;
 	Mat bin;
 	wt(image, fres, bin);
-
+	//bin = image;
 	cvtColor(bin, bin, COLOR_GRAY2BGR);
-
-	GaussianBlur(bin, bin, Size(25,25), 33, 33, BORDER_DEFAULT);
-	imshow("Output", bin);
-	waitKey(0);
-
-	//setUseOptimized(true);
-	//setNumThreads(8);
+	int a = 124;
+	resize(bin, bin, Size(a, a), INTER_AREA);
+	//GaussianBlur(bin, bin, Size(3,3), 5,5, BORDER_DEFAULT);
+	//imshow("OutputPreNN", bin);
+	//waitKey(0);
 
 	Ptr<SelectiveSearchSegmentation> ss = createSelectiveSearchSegmentation();
 	ss->setBaseImage(bin);
-	//ss->switchToSelectiveSearchFast();
-	ss->switchToSingleStrategy();
+	ss->switchToSelectiveSearchFast();
+	//ss->switchToSelectiveSearchQuality();
+	//ss->switchToSingleStrategy(10, 0.001);
+	//ss->switchToSingleStrategy();
 
 	vector<Rect> rects;
 	ss->process(rects);
@@ -55,35 +67,45 @@ int main(int argc, char** argv)
 	cout << "Total Number of Region Proposals: " << rects.size() << endl;
 	//cout << "Total Number of Region Proposals with no mod: " << rects2.size() << endl;
 
+
 	vector<Rect> bounday_box;
 	vector<float> scores;
-	
-
 	for (int i = 0; i < rects.size(); i++) {
-			if (i % 100 == 0)
-				cout << i << endl;
-			Mat temp = imOut(rects[i]);
-			resize(temp, temp, Size(224, 224), INTER_AREA);
-			Mat blob = blobFromImage(temp, 1.0, Size(224, 224));
-			model.setInput(blob);
-			rectangle(imOut, rects[i], Scalar(0, 0, 255));
-			Mat output = model.forward();
-			if (output.at<float>(0, 0) > 0.8) {
-				bounday_box.push_back(rects[i]);
-				scores.push_back(output.at<float>(0, 0));
-				//rectangle(imOut, rects[i], Scalar(255, 100, 0));
-			}
+		if (i % 50 == 0)
+			cout << i << endl;
+
+		rects[i].x = (rects[i].x * imOut.size().width) / a;
+		rects[i].y = (rects[i].y * imOut.size().height) / a;
+		rects[i].width = (rects[i].width * imOut.size().width) / a;
+		rects[i].height = (rects[i].height * imOut.size().height) / a;
+
+
+		rectangle(imOut, rects[i], Scalar(0, 0, 255));
+		predict(model, imOut(rects[i]), rects[i], 0.55, bounday_box, scores);
 	}
 	vector<int> indices;
-	NMSBoxes(bounday_box, scores, 0.3f, 1.0f, indices);
+	NMSBoxes(bounday_box, scores, 0.3f, 0.05f, indices);
 	for (size_t i = 0; i < indices.size(); i++) {
-		int idx = indices[i];
-		Rect box = bounday_box[idx];
+		Rect box = bounday_box[indices[i]];
 		rectangle(imOut, box, Scalar(0, 255, 0));
 	}
 
+	cout << "time required: " << stop(timer) << "s" << endl;
 	imshow("Output", imOut);
 	waitKey(0);
+
+
+}
+
+void predict(Net model, Mat image, Rect rect, double th, vector<Rect> &bounday_box, vector<float> &scores){
+
+	Mat blob = blobFromImage(image, 1.0, Size(224, 224));
+	model.setInput(blob);	
+	Mat output = model.forward();
+	if (output.at<float>(0, 0) > th) {
+		bounday_box.push_back(rect);
+		scores.push_back(output.at<float>(0, 0));
+	}
 
 }
 
@@ -121,19 +143,17 @@ void preprocess_image(Mat input, Mat &result, double sigma, Range hue_range, Ran
 }
 
 void wt(Mat src, Mat &fres, Mat &bin) {
-
-
 	// Show the source image
-	imshow("Source Image", src);
-	waitKey(0);
+	//imshow("Source Image", src);
+	//waitKey(0);
 	// Change the background from white to black, since that will help later to extract
 	// better results during the use of Distance Transform
 	Mat mask;
 	inRange(src, Scalar(255, 255, 255), Scalar(255, 255, 255), mask);
 	src.setTo(Scalar(0, 0, 0), mask);
 	// Show output image
-	imshow("Black Background Image", src);
-	waitKey(0);
+	//imshow("Black Background Image", src);
+	//waitKey(0);
 	// Create a kernel that we will use to sharpen our image
 	Mat kernel = (Mat_<float>(3, 3) <<
 		1, 1, 1,
@@ -149,34 +169,45 @@ void wt(Mat src, Mat &fres, Mat &bin) {
 	imgResult.convertTo(imgResult, CV_8UC3);
 	imgLaplacian.convertTo(imgLaplacian, CV_8UC3);
 	// imshow( "Laplace Filtered Image", imgLaplacian );
-	imshow("New Sharped Image", imgResult);
-	waitKey(0);
+	//imshow("New Sharped Image", imgResult);
+	//waitKey(0);
 	// Create binary image from source image
+	//bin = imgResult; return;
 	Mat bw;
 	cvtColor(imgResult, bw, COLOR_BGR2GRAY);
-	threshold(bw, bw, 40, 255, THRESH_BINARY | THRESH_OTSU);
-	imshow("Binary Image", bw);
-	waitKey(0);
-	//bin = bw;
+	//threshold(bw, bw, 30, 255, THRESH_BINARY | THRESH_OTSU);
+	adaptiveThreshold(bw, bw, 250, BORDER_REPLICATE, THRESH_BINARY, 111, 50);
+	//GaussianBlur(bw, bw, Size(3, 3), 7, 7);
+	//imshow("Binary Image", bw);
+	//waitKey(0);
+	bin = bw;
+	//return;
+	//return;
+	//waitKey(0);
 	// Perform the distance transform algorithm
 	Mat dist;
 	distanceTransform(bw, dist, DIST_L2, 3);
 	// Normalize the distance image for range = {0.0, 1.0}
 	// so we can visualize and threshold it
-	normalize(dist, dist, 0, 5.0, NORM_MINMAX);
-	imshow("Distance Transform Image", dist);
-	waitKey(0);
+	normalize(dist, dist, 0, 30, NORM_MINMAX);
 	bin = dist;
+	
+	//imshow("Distance Transform Image", dist);
+	//waitKey(0);
+	return;
+	//return;
 	// Threshold to obtain the peaks
 	// This will be the markers for the foreground objects
-	threshold(dist, dist, 0.4, 1.0, THRESH_BINARY);
+	threshold(dist, dist, 0.6, 1.0, THRESH_BINARY);
 	// Dilate a bit the dist image
 	Mat kernel1 = Mat::ones(3, 3, CV_8U);
 	dilate(dist, dist, kernel1);
-	imshow("Peaks", dist);
-	waitKey(0);
 	bin = dist;
+	//imshow("Distance Transform Image", dist);
+	//waitKey(0);
 	return;
+	//imshow("Peaks", dist);
+	//waitKey(0);
 	// Create the CV_8U version of the distance image
 	// It is needed for findContours()
 	Mat dist_8u;
@@ -195,7 +226,8 @@ void wt(Mat src, Mat &fres, Mat &bin) {
 	circle(markers, Point(5, 5), 3, Scalar(255), -1);
 	Mat markers8u;
 	markers.convertTo(markers8u, CV_8U, 10);
-	imshow("Markers", markers8u);
+	//imshow("Markers", markers8u);
+	bin = markers8u;
 	// Perform the watershed algorithm
 	watershed(src, markers);
 	Mat mark;
@@ -230,4 +262,16 @@ void wt(Mat src, Mat &fres, Mat &bin) {
 	imshow("Final Result", dst);
 	waitKey(0);
 	fres = dst;
+}
+
+
+void start(Timer timer) {
+	timer.start = ((double)clock() / (double)CLK_TCK);
+}
+
+double stop(Timer timer) {
+	// Get the time
+	timer.stop = ((double)clock() / (double)CLK_TCK);
+	double time = timer.stop - timer.start;
+	return time;
 }
