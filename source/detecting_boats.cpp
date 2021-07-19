@@ -4,10 +4,13 @@ int main(int argc, char** argv)
 {
 	Timer timer = Timer();
 	start(timer);
-	const string pb_model = "C:/data/model7/model.pb";
-	const string pbtxt_model = "C:/data/model7/model.pbtxt";
+
+	//const string testIoU = "C:/data/test_IoU.txt";
+	const string testIoU = "";
+	const string pb_model = "C:/data/model21/model.pb";
+	const string pbtxt_model = "C:/data/model21/model.pbtxt";
 	//const string img_path = "C:/data/train/20130412_153327_37259.jpg";   //20130412_153327_37259.jpg";20130412_084036_47574
-	const string img_path = "C:/data/venice_dataset/venice_dataset/01.png";
+	const string img_path = "C:/data/venice_dataset/venice_dataset/11.png";
 	//const string img_path = "C:/data/Kaggle_ships/06.jpg";
 	
 	//setUseOptimized(true);
@@ -16,6 +19,12 @@ int main(int argc, char** argv)
 	Mat image = imread(img_path);
 	Mat imOut = image.clone();
 	Net model = readNetFromTensorflow(pb_model, pbtxt_model);
+
+
+	//for(Rect rect : bb_in)
+	//	rectangle(image, rect, Scalar(0, 255, 0));
+	//imshow("Output", image);
+	//waitKey(0);
 
 	
 
@@ -32,23 +41,21 @@ int main(int argc, char** argv)
 	cvtColor(fin, image, COLOR_GRAY2BGR);
 	*/
 	GaussianBlur(image, image, Size(7,7), 9,9, BORDER_DEFAULT);
-	
-	/*Mat fin;
+	/*
+	Mat fin;
 	cvtColor(image, fin, COLOR_BGR2GRAY);
 	equalizeHist(fin, fin);
 	//imshow("Output", fin);
 	//waitKey(0);
 	cvtColor(fin, image, COLOR_GRAY2BGR);*/
-	
-	Mat processed_image;
-	preProcessingImage(Mat image, Mat &processed_image)
+
 
 	Mat fres;
 	Mat bin;
 	wt(image, fres, bin);
 	//bin = image;
 	cvtColor(bin, bin, COLOR_GRAY2BGR);
-	int a = 124;
+	int a = 124; //124
 	resize(bin, bin, Size(a, a), INTER_AREA);
 	//GaussianBlur(bin, bin, Size(3,3), 5,5, BORDER_DEFAULT);
 	//imshow("OutputPreNN", bin);
@@ -80,14 +87,23 @@ int main(int argc, char** argv)
 		rects[i].height = (rects[i].height * imOut.size().height) / a;
 
 
-		rectangle(imOut, rects[i], Scalar(0, 0, 255));
-		predict(model, imOut(rects[i]), rects[i], 0.55, bounday_box, scores);
+		//rectangle(imOut, rects[i], Scalar(0, 0, 255));
+		predict(model, imOut, rects[i], 0.85, bounday_box, scores);
 	}
 	vector<int> indices;
-	NMSBoxes(bounday_box, scores, 0.3f, 0.05f, indices);
+	NMSBoxes(bounday_box, scores, 0.3f, 0.1f, indices);
 	for (size_t i = 0; i < indices.size(); i++) {
 		Rect box = bounday_box[indices[i]];
 		rectangle(imOut, box, Scalar(0, 255, 0));
+	}
+
+	//y, x, h, w
+	//string bbinput = "(593,414,287,75);(243,585,423,124);(869,538,345,122)";
+	if (!testIoU.empty()) {
+		ifstream in(testIoU);
+		vector<Rect> bb_in;
+		parsing(testIoU,"06.jpg",bb_in);
+		checkDisplayIoU(imOut, bounday_box, indices, bb_in);
 	}
 
 	cout << "time required: " << stop(timer) << "s" << endl;
@@ -97,31 +113,116 @@ int main(int argc, char** argv)
 
 }
 
-void predict(Net model, Mat image, Rect rect, double th, vector<Rect> &bounday_box, vector<float> &scores){
+void parsing(string testIoU, string name_image, vector<Rect> &bb_in) {
+	
+	ifstream in(testIoU);
+	vector<string> labeled_images;
+	string text_line;
+	int flag_found = 0;
+	while (in >> text_line)
+		labeled_images.push_back(text_line);
+	in.close();
 
-	Mat blob = blobFromImage(image, 1.0, Size(224, 224));
+	vector <string> tokens;
+	string intermediate;
+
+	//remove ";"
+	for (string line : labeled_images) {
+		tokens.clear();
+		stringstream check1(line);
+		while (getline(check1, intermediate, ';'))
+			tokens.push_back(intermediate);
+		if (tokens[0].compare(name_image) == 0) {
+			flag_found = 1;
+			break;
+		}
+		flag_found = 0;
+	}
+
+	if (!flag_found)
+		printError("Image in input not present inside label txt file.");
+
+	//remove paranthesis
+	for (int i = 1; i < tokens.size(); i++)
+		tokens[i] = tokens[i].substr(1, tokens[i].length() - 2);
+
+	for (int i = 1; i < tokens.size(); i++) {
+		vector<double> coords;
+		stringstream check(tokens[i]);
+		while (getline(check, intermediate, ','))
+			coords.push_back(stoi(intermediate));
+		bb_in.push_back(Rect(coords[0], coords[1], coords[2], coords[3]));
+	}
+ 
+
+}
+
+void checkDisplayIoU(Mat &imOut, vector<Rect> bounday_box, vector<int> indices, vector<Rect> bb_in) {
+
+	for (int index : indices){
+
+		vector<double> ious;
+
+		//computing the IoU between the input and predicted rects
+		for(Rect rect : bb_in)
+			ious.push_back(IoU(bounday_box[index], rect));
+
+		//checking condition
+		if (ious.size() == 0)
+			continue;
+		
+		//max IoU found in %, e.g. 75%
+		int max_iou = roundf(*max_element(ious.begin(), ious.end())*100);
+
+		//index of the max IoU found
+		int max_index = max_element(ious.begin(), ious.end()) - ious.begin();
+
+		//draw rectangle
+		rectangle(imOut, bb_in[max_index], Scalar(0, 0, 255));
+
+		//draw on the image the IoU value
+		string text = "IOU:" + to_string(max_iou)+"%";
+		putText(imOut, text, Point2f(bounday_box[index].x, bounday_box[index].y), FONT_HERSHEY_PLAIN, 2, Scalar(0, 0, 255, 255), 1, 3);
+	}
+
+}
+
+void predict(Net model, Mat &image, Rect rect, double th, vector<Rect> &bounday_box, vector<float> &scores){
+
+	Mat blob = blobFromImage(image(rect), 1.0, Size(224, 224));
 	model.setInput(blob);	
 	Mat output = model.forward();
 	if (output.at<float>(0, 0) > th) {
 		bounday_box.push_back(rect);
+		rectangle(image, rect, Scalar(0, 0, 255));
 		scores.push_back(output.at<float>(0, 0));
 	}
 
 }
 
-double intersection_over_union(vector<int> boxA, vector<int> boxB) {
+double IoU(Rect first_rect, Rect second_rect) {
 
-	int xA = max(boxA[0], boxB[0]);
-	int xB = max(boxA[1], boxB[1]);
-	int yA = min(boxA[2], boxB[2]);
-	int yB = min(boxA[3], boxB[3]);
+	if (first_rect.empty() || second_rect.empty())
+		printError("IOU function: one of the two rects is empty");
+
+	int x_left = max(first_rect.x, second_rect.x);
+	int y_top = max(first_rect.y, second_rect.y);
+	int x_right = min((first_rect.x + first_rect.width), (second_rect.x + second_rect.width));
+	int y_bottom = min((first_rect.y + first_rect.height), (second_rect.y + second_rect.height));
 
 	//compute the area of intersection rectangle
-	int interArea = max(0, xB - xA + 1) * max(0, yB - yA + 1);
-	int boxAArea = (boxA[1] - boxA[0] + 1) * (boxA[3] - boxA[2] + 1);
-	int boxBArea = (boxB[1] - boxB[0] + 1) * (boxB[3] - boxB[2] + 1);
+	if ((x_right < x_left) ||  (y_bottom < y_top))
+		return 0.0;
 
-	return double(interArea / double(boxAArea + boxBArea - interArea));
+	double intersection_area = (x_right - x_left) * (y_bottom - y_top);
+	double first_rect_area = (first_rect.width) * (first_rect.height);
+	double second_rect_area = (second_rect.width) * (second_rect.height);
+	double iou = intersection_area / double(first_rect_area + second_rect_area - intersection_area);
+
+	if (iou > 1.0 || iou < 0.0)
+		printError("IoU value is not between 0 and 1");
+
+	return iou;
 }
 
 void preprocess_image(Mat input, Mat &result, double sigma, Range hue_range, Range value_range, int delta_brightness)
@@ -264,6 +365,11 @@ void wt(Mat src, Mat &fres, Mat &bin) {
 	fres = dst;
 }
 
+void printError(string error)
+{
+	printf("\nERROR: %s \n\n", error);
+	exit(1);
+}
 
 void start(Timer timer) {
 	timer.start = ((double)clock() / (double)CLK_TCK);

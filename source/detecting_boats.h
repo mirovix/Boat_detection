@@ -2,6 +2,7 @@
 #include <opencv2/dnn/dnn.hpp>
 #include <opencv2/ximgproc/segmentation.hpp>
 #include <thread>
+#include <assert.h> 
 
 #include <fstream>
 #include <iostream>
@@ -22,8 +23,14 @@ void start(Timer timer);
 // Stop the timer, free the struct and return the time spent
 double stop(Timer timer);
 
+void parsing(string testIoU, string name_image, vector<Rect> &bb_in);
+
+void printError(string error);
+
 //Computing the IOU given two boundary box
-double intersection_over_union(vector<int> boxA, vector<int> boxB);
+double IoU(Rect boxA, Rect boxB);
+
+void checkDisplayIoU(Mat &imOut, vector<Rect> bounday_box, vector<int> indices, vector<Rect> bb_in);
 
 void wt(Mat src, Mat &fres, Mat &bin);
 
@@ -31,4 +38,4 @@ void preprocess_image(Mat input, Mat &result, double sigma, Range hue_range, Ran
 
 //void NN(double th, int a, Mat imOut, Net model, vector<Rect> rects, vector<Rect> &bounday_box, vector<float> &scores);
 
-void predict(Net model, Mat image, Rect rect, double th, vector<Rect> &bounday_box, vector<float> &scores);
+void predict(Net model, Mat &image, Rect rect, double th, vector<Rect> &bounday_box, vector<float> &scores);
