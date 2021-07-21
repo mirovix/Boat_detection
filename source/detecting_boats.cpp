@@ -2,135 +2,193 @@
 
 int main(int argc, char** argv)
 {
-	Timer timer = Timer();
-	start(timer);
-
-	//const string testIoU = "C:/data/test_IoU.txt";
-	const string testIoU = "";
+	string testIoU = "C:/data/test_IoU.txt";
+	//const string testIoU = "";
 	const string pb_model = "C:/data/model21/model.pb";
 	const string pbtxt_model = "C:/data/model21/model.pbtxt";
 	//const string img_path = "C:/data/train/20130412_153327_37259.jpg";   //20130412_153327_37259.jpg";20130412_084036_47574
-	const string img_path = "C:/data/venice_dataset/venice_dataset/11.png";
-	//const string img_path = "C:/data/Kaggle_ships/06.jpg";
+	//const string directory = "C:/data/venice_dataset/venice_dataset/*";
+	//const string directory = "C:/data/Kaggle_ships/*";
 	
-	//setUseOptimized(true);
-	//setNumThreads(4);
+	string directory = "C:/data/venice_dataset/venice_dataset/*";
+	vector<String> paths;
+	glob(directory, paths);
 
-	Mat image = imread(img_path);
-	Mat imOut = image.clone();
 	Net model = readNetFromTensorflow(pb_model, pbtxt_model);
 
+	//checkInput(argc, argv, paths, testIoU);
+	int size_processed_image = 124;
+	double threshold = 0.93;
 
-	//for(Rect rect : bb_in)
-	//	rectangle(image, rect, Scalar(0, 255, 0));
-	//imshow("Output", image);
-	//waitKey(0);
-
-	
-
-	//Mat result;
-	//preprocess_image(image, result, 94, Range(25, 50), Range(25, 50), 10);
-	/*Ptr<CLAHE> clahe = createCLAHE();
-	clahe->setClipLimit(1);
-
-	Mat fin;
-	cvtColor(image, fin, COLOR_BGR2GRAY);
-	clahe->apply(fin, fin);
-	//imshow("Output", fin);
-	//waitKey(0);
-	cvtColor(fin, image, COLOR_GRAY2BGR);
-	*/
-	GaussianBlur(image, image, Size(7,7), 9,9, BORDER_DEFAULT);
-	/*
-	Mat fin;
-	cvtColor(image, fin, COLOR_BGR2GRAY);
-	equalizeHist(fin, fin);
-	//imshow("Output", fin);
-	//waitKey(0);
-	cvtColor(fin, image, COLOR_GRAY2BGR);*/
-
-
-	Mat fres;
-	Mat bin;
-	wt(image, fres, bin);
-	//bin = image;
-	cvtColor(bin, bin, COLOR_GRAY2BGR);
-	int a = 124; //124
-	resize(bin, bin, Size(a, a), INTER_AREA);
-	//GaussianBlur(bin, bin, Size(3,3), 5,5, BORDER_DEFAULT);
-	//imshow("OutputPreNN", bin);
-	//waitKey(0);
-
-	Ptr<SelectiveSearchSegmentation> ss = createSelectiveSearchSegmentation();
-	ss->setBaseImage(bin);
-	ss->switchToSelectiveSearchFast();
-	//ss->switchToSelectiveSearchQuality();
-	//ss->switchToSingleStrategy(10, 0.001);
-	//ss->switchToSingleStrategy();
-
-	vector<Rect> rects;
-	ss->process(rects);
-
-	cout << "Total Number of Region Proposals: " << rects.size() << endl;
-	//cout << "Total Number of Region Proposals with no mod: " << rects2.size() << endl;
-
-
-	vector<Rect> bounday_box;
-	vector<float> scores;
-	for (int i = 0; i < rects.size(); i++) {
-		if (i % 50 == 0)
-			cout << i << endl;
-
-		rects[i].x = (rects[i].x * imOut.size().width) / a;
-		rects[i].y = (rects[i].y * imOut.size().height) / a;
-		rects[i].width = (rects[i].width * imOut.size().width) / a;
-		rects[i].height = (rects[i].height * imOut.size().height) / a;
-
-
-		//rectangle(imOut, rects[i], Scalar(0, 0, 255));
-		predict(model, imOut, rects[i], 0.85, bounday_box, scores);
+	//detecting images 
+	for (String path : paths)
+	{
+		cout << "Image loaded: " << path << endl;
+		detect(model, path, testIoU, threshold, size_processed_image);
 	}
-	vector<int> indices;
-	NMSBoxes(bounday_box, scores, 0.3f, 0.1f, indices);
-	for (size_t i = 0; i < indices.size(); i++) {
-		Rect box = bounday_box[indices[i]];
-		rectangle(imOut, box, Scalar(0, 255, 0));
-	}
-
-	//y, x, h, w
-	//string bbinput = "(593,414,287,75);(243,585,423,124);(869,538,345,122)";
-	if (!testIoU.empty()) {
-		ifstream in(testIoU);
-		vector<Rect> bb_in;
-		parsing(testIoU,"06.jpg",bb_in);
-		checkDisplayIoU(imOut, bounday_box, indices, bb_in);
-	}
-
-	cout << "time required: " << stop(timer) << "s" << endl;
-	imshow("Output", imOut);
-	waitKey(0);
-
 
 }
 
-void parsing(string testIoU, string name_image, vector<Rect> &bb_in) {
+void detect(Net model, string path, string testIoU, double threshold, int size_processed_image) {
+
+	Timer timer = Timer();
+	timer.start = ((double)clock() / (double)CLK_TCK);
+
+	//load the input image
+	Mat input_image = imread(path);
+	Mat output_image = input_image.clone();
+
+	//preprocessing phase
+	Mat processed_image;
+	preprocessig(input_image, processed_image, size_processed_image);
+
+
+	//finding the regions 
+	vector<Rect> rects;
+	selectiveSearch(processed_image, rects, 'F');
+
+
+	//predict the regions
+	vector<Rect> bounding_box;
+	vector<float> scores;
+	predictRegions(output_image, model, bounding_box, scores, rects, size_processed_image, threshold);
+
+	//Non maxima suppression and drawing rects
+	vector<int> indices;
+	NMSandDrawing(output_image, indices, bounding_box, scores);
+
+	//y, x, h, w
+	//Computing the IoU given the file of bounding boxes
+	if (!testIoU.empty()) {
+		vector<Rect> bounding_box_input;
+		parsingInputIOU(testIoU, path, bounding_box_input);
+		checkDisplayIoU(output_image, bounding_box, indices, bounding_box_input);
+	}
+
+	//display time 
+	timer.stop = ((double)clock() / (double)CLK_TCK);
+	double time = timer.stop - timer.start;
+	cout << "time required: " << time << "s" << endl;
+
+	//display out
+	imshow("Output", output_image);
+	waitKey(0);
+}
+
+void checkInput(int argc, char** argv, vector<String> &paths, string &testIoU) {
+
+	if (argc == 0)
+		printError(" Usage: C:\file\venice_dataset\* -F C:\file\IoU.txt");
+
+	//save the directory
+	string directory = argv[1];
+	glob(directory, paths);
+	if(paths.size()==0)
+		printError("chekInput: empty directory");
+
+	//save testIoU if it is given
+	if (argc == 3)
+		testIoU = argv[3];
+	else
+		testIoU = "";
+
+}
+
+void NMSandDrawing(Mat &output_image, vector<int> &indices, vector<Rect> bounding_box, vector<float> scores) {
+
+	NMSBoxes(bounding_box, scores, 0.3f, 0.05f, indices);
+	for (size_t i = 0; i < indices.size(); i++) {
+		Rect box = bounding_box[indices[i]];
+		rectangle(output_image, box, Scalar(0, 255, 0));
+	}
+}
+
+void predictRegions(Mat &image, Net model, vector<Rect> &bounding_box, vector<float> &scores, vector<Rect> rects, int size_processed_image, double threshold) {
+
+	cout << "Starting processing each region..." << endl;
+
+	for (Rect rect : rects) {
 	
-	ifstream in(testIoU);
-	vector<string> labeled_images;
-	string text_line;
-	int flag_found = 0;
-	while (in >> text_line)
-		labeled_images.push_back(text_line);
-	in.close();
+		//resize the regions rects
+		rect.x = (rect.x * image.size().width) / size_processed_image;
+		rect.y = (rect.y * image.size().height) / size_processed_image;
+		rect.width = (rect.width * image.size().width) / size_processed_image;
+		rect.height = (rect.height * image.size().height) / size_processed_image;
+
+		//predict the region
+		regionPrediction(model, image, rect, threshold, bounding_box, scores);
+	}
+
+	cout << "Prediction phase completed" << endl;
+}
+
+void selectiveSearch(Mat image, vector<Rect> &rects, char method) {
+
+	//definition of selecetive search
+	Ptr<SelectiveSearchSegmentation> selective_search = createSelectiveSearchSegmentation();
+	selective_search->setBaseImage(image);
+
+	//selecte the method for finding the regions (defualt fast implmentation)
+	switch (method)
+	{
+		case 'F':
+			selective_search->switchToSelectiveSearchFast();
+			break; 
+		
+		case 'Q':
+			selective_search->switchToSelectiveSearchQuality();
+			break; 
+
+		case 'N':
+			selective_search->switchToSingleStrategy();
+			break;
+
+		case 'SF':
+			selective_search->switchToSingleStrategy(10, 0.001);
+			break;
+
+		default: 
+			selective_search->switchToSelectiveSearchFast();
+			break;
+	}
+
+	//process the image and return the regions
+	selective_search->process(rects);
+
+	cout << "Total number of region proposals found: " << rects.size() << endl;
+}
+
+void parsingInputIOU(string testIoU, string name_image, vector<Rect> &bounding_box_input) {
+	
+	//open the file
+	ifstream input(testIoU);
+	if (!input.is_open())
+		printError("parsingInputIOU: unable to open text file");
 
 	vector <string> tokens;
 	string intermediate;
 
-	//remove ";"
+	//parsing the name image 
+	stringstream check_name_input(name_image);
+	while (getline(check_name_input, intermediate, '\\'))
+		tokens.push_back(intermediate);
+	name_image = tokens[1];
+
+	//read the lines
+	vector<string> labeled_images;
+	string text_line;
+	while (input >> text_line)
+		labeled_images.push_back(text_line);
+	input.close();
+
+
+
+	//check if the input image is present inside the txt file and then remove ";" from the input
+	int flag_found = 0;
 	for (string line : labeled_images) {
 		tokens.clear();
-		stringstream check1(line);
-		while (getline(check1, intermediate, ';'))
+		stringstream check_line(line);
+		while (getline(check_line, intermediate, ';'))
 			tokens.push_back(intermediate);
 		if (tokens[0].compare(name_image) == 0) {
 			flag_found = 1;
@@ -139,58 +197,63 @@ void parsing(string testIoU, string name_image, vector<Rect> &bb_in) {
 		flag_found = 0;
 	}
 
+	//image not found 
 	if (!flag_found)
-		printError("Image in input not present inside label txt file.");
+		printError("parsingInputIOU: Image in input not present inside label txt file");
+
 
 	//remove paranthesis
 	for (int i = 1; i < tokens.size(); i++)
 		tokens[i] = tokens[i].substr(1, tokens[i].length() - 2);
 
+
+	//save each value insaide the vector 
 	for (int i = 1; i < tokens.size(); i++) {
 		vector<double> coords;
 		stringstream check(tokens[i]);
 		while (getline(check, intermediate, ','))
 			coords.push_back(stoi(intermediate));
-		bb_in.push_back(Rect(coords[0], coords[1], coords[2], coords[3]));
+		bounding_box_input.push_back(Rect(coords[0], coords[1], coords[2], coords[3]));
 	}
  
 
 }
 
-void checkDisplayIoU(Mat &imOut, vector<Rect> bounday_box, vector<int> indices, vector<Rect> bb_in) {
+void checkDisplayIoU(Mat &output_image, vector<Rect> bounding_box, vector<int> indices, vector<Rect> bounding_box_input) {
 
 	for (int index : indices){
 
 		vector<double> ious;
 
 		//computing the IoU between the input and predicted rects
-		for(Rect rect : bb_in)
-			ious.push_back(IoU(bounday_box[index], rect));
+		for(Rect rect : bounding_box_input)
+			ious.push_back(iou(bounding_box[index], rect));
 
-		//checking condition
-		if (ious.size() == 0)
-			continue;
 		
-		//max IoU found in %, e.g. 75%
+		//max IoU found in %, e.g. 75% and control if it is greater than a given threshold
 		int max_iou = roundf(*max_element(ious.begin(), ious.end())*100);
+		if ((max_iou < 20) || (ious.size() == 0))
+			continue;
 
 		//index of the max IoU found
 		int max_index = max_element(ious.begin(), ious.end()) - ious.begin();
 
 		//draw rectangle
-		rectangle(imOut, bb_in[max_index], Scalar(0, 0, 255));
+		rectangle(output_image, bounding_box_input[max_index], Scalar(0, 0, 255));
 
 		//draw on the image the IoU value
 		string text = "IOU:" + to_string(max_iou)+"%";
-		putText(imOut, text, Point2f(bounday_box[index].x, bounday_box[index].y), FONT_HERSHEY_PLAIN, 2, Scalar(0, 0, 255, 255), 1, 3);
+		putText(output_image, text, Point2f(bounding_box[index].x, bounding_box[index].y), FONT_HERSHEY_PLAIN, 2, Scalar(0, 0, 255, 255), 1, 3);
 	}
 
 }
 
-void predict(Net model, Mat &image, Rect rect, double th, vector<Rect> &bounday_box, vector<float> &scores){
+void regionPrediction(Net model, Mat &image, Rect rect, double th, vector<Rect> &bounday_box, vector<float> &scores){
 
+	//set blob using the input image
 	Mat blob = blobFromImage(image(rect), 1.0, Size(224, 224));
 	model.setInput(blob);	
+
 	Mat output = model.forward();
 	if (output.at<float>(0, 0) > th) {
 		bounday_box.push_back(rect);
@@ -200,184 +263,98 @@ void predict(Net model, Mat &image, Rect rect, double th, vector<Rect> &bounday_
 
 }
 
-double IoU(Rect first_rect, Rect second_rect) {
+double iou(Rect first_rect, Rect second_rect) {
 
 	if (first_rect.empty() || second_rect.empty())
-		printError("IOU function: one of the two rects is empty");
+		printError("iou: one of the two rects is empty");
 
+	//define the max/min values
 	int x_left = max(first_rect.x, second_rect.x);
 	int y_top = max(first_rect.y, second_rect.y);
 	int x_right = min((first_rect.x + first_rect.width), (second_rect.x + second_rect.width));
 	int y_bottom = min((first_rect.y + first_rect.height), (second_rect.y + second_rect.height));
 
-	//compute the area of intersection rectangle
+	//check the value
 	if ((x_right < x_left) ||  (y_bottom < y_top))
 		return 0.0;
-
+	
+	//compute the area of intersection rectangle
 	double intersection_area = (x_right - x_left) * (y_bottom - y_top);
 	double first_rect_area = (first_rect.width) * (first_rect.height);
 	double second_rect_area = (second_rect.width) * (second_rect.height);
 	double iou = intersection_area / double(first_rect_area + second_rect_area - intersection_area);
 
+	//check the iou value
 	if (iou > 1.0 || iou < 0.0)
-		printError("IoU value is not between 0 and 1");
+		printError("iou: IoU value is not between 0 and 1");
 
 	return iou;
 }
 
-void preprocess_image(Mat input, Mat &result, double sigma, Range hue_range, Range value_range, int delta_brightness)
-{
-	// split into RGB channels
-	vector<Mat> img_channels;
-	split(input, img_channels);
+void preprocessig(Mat input_image, Mat &processed_image, int size_processed_image) {
 
-	// equalize histograms
-	equalizeHist(img_channels[0], img_channels[0]);
-	equalizeHist(img_channels[1], img_channels[1]);
-	equalizeHist(img_channels[2], img_channels[2]);
+	//check inputs
+	if (size_processed_image < 30 || size_processed_image > 600)
+		printError("Preprocessing: Input 'size_processed_image' too small or too high");
 
-	// merge back into single equalized RGB image
-	Mat equalized_img;
-	merge(img_channels, equalized_img);
+	//smooth image using the Gaussian filter
+	GaussianBlur(input_image, input_image, Size(7, 7), 9, 9, BORDER_DEFAULT);
 
-	result = equalized_img;
-}
+	//equalization using the histogram
+	//Mat equalized_image;
+	//cvtColor(input_image, equalized_image, COLOR_BGR2GRAY);
+	//equalizeHist(equalized_image, equalized_image);
+	//cvtColor(equalized_image, input_image, COLOR_GRAY2BGR);
 
-void wt(Mat src, Mat &fres, Mat &bin) {
-	// Show the source image
-	//imshow("Source Image", src);
-	//waitKey(0);
-	// Change the background from white to black, since that will help later to extract
-	// better results during the use of Distance Transform
+
+	//change the background from white to black since performs better during the use of Distance Transform
 	Mat mask;
-	inRange(src, Scalar(255, 255, 255), Scalar(255, 255, 255), mask);
-	src.setTo(Scalar(0, 0, 0), mask);
-	// Show output image
-	//imshow("Black Background Image", src);
-	//waitKey(0);
-	// Create a kernel that we will use to sharpen our image
-	Mat kernel = (Mat_<float>(3, 3) <<
-		1, 1, 1,
-		1, -8, 1,
-		1, 1, 1); 
+	inRange(input_image, Scalar(255, 255, 255), Scalar(255, 255, 255), mask);
+	input_image.setTo(Scalar(0, 0, 0), mask);
 
-	Mat imgLaplacian;
-	filter2D(src, imgLaplacian, CV_32F, kernel);
-	Mat sharp;
-	src.convertTo(sharp, CV_32F);
-	Mat imgResult = sharp - imgLaplacian;
-	// convert back to 8bits gray scale
-	imgResult.convertTo(imgResult, CV_8UC3);
-	imgLaplacian.convertTo(imgLaplacian, CV_8UC3);
-	// imshow( "Laplace Filtered Image", imgLaplacian );
-	//imshow("New Sharped Image", imgResult);
-	//waitKey(0);
-	// Create binary image from source image
-	//bin = imgResult; return;
-	Mat bw;
-	cvtColor(imgResult, bw, COLOR_BGR2GRAY);
-	//threshold(bw, bw, 30, 255, THRESH_BINARY | THRESH_OTSU);
-	adaptiveThreshold(bw, bw, 250, BORDER_REPLICATE, THRESH_BINARY, 111, 50);
-	//GaussianBlur(bw, bw, Size(3, 3), 7, 7);
-	//imshow("Binary Image", bw);
-	//waitKey(0);
-	bin = bw;
-	//return;
-	//return;
-	//waitKey(0);
-	// Perform the distance transform algorithm
-	Mat dist;
-	distanceTransform(bw, dist, DIST_L2, 3);
-	// Normalize the distance image for range = {0.0, 1.0}
-	// so we can visualize and threshold it
-	normalize(dist, dist, 0, 30, NORM_MINMAX);
-	bin = dist;
+
+	//create a kernel for sharpe input image
+	Mat kernel = (Mat_<float>(3, 3) << 1, 1, 1, 1, -8, 1, 1, 1, 1); 
+
 	
-	//imshow("Distance Transform Image", dist);
-	//waitKey(0);
-	return;
-	//return;
-	// Threshold to obtain the peaks
-	// This will be the markers for the foreground objects
-	threshold(dist, dist, 0.6, 1.0, THRESH_BINARY);
-	// Dilate a bit the dist image
-	Mat kernel1 = Mat::ones(3, 3, CV_8U);
-	dilate(dist, dist, kernel1);
-	bin = dist;
-	//imshow("Distance Transform Image", dist);
-	//waitKey(0);
-	return;
-	//imshow("Peaks", dist);
-	//waitKey(0);
-	// Create the CV_8U version of the distance image
-	// It is needed for findContours()
-	Mat dist_8u;
-	dist.convertTo(dist_8u, CV_8U);
-	// Find total markers
-	vector<vector<Point> > contours;
-	findContours(dist_8u, contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
-	// Create the marker image for the watershed algorithm
-	Mat markers = Mat::zeros(dist.size(), CV_32S);
-	// Draw the foreground markers
-	for (size_t i = 0; i < contours.size(); i++)
-	{
-		drawContours(markers, contours, static_cast<int>(i), Scalar(static_cast<int>(i) + 1), -1);
-	}
-	// Draw the background marker
-	circle(markers, Point(5, 5), 3, Scalar(255), -1);
-	Mat markers8u;
-	markers.convertTo(markers8u, CV_8U, 10);
-	//imshow("Markers", markers8u);
-	bin = markers8u;
-	// Perform the watershed algorithm
-	watershed(src, markers);
-	Mat mark;
-	markers.convertTo(mark, CV_8U);
-	bitwise_not(mark, mark);
-	//    imshow("Markers_v2", mark); // uncomment this if you want to see how the mark
-	// image looks like at that point
-	// Generate random colors
-	vector<Vec3b> colors;
-	for (size_t i = 0; i < contours.size(); i++)
-	{
-		int b = theRNG().uniform(0, 256);
-		int g = theRNG().uniform(0, 256);
-		int r = theRNG().uniform(0, 256);
-		colors.push_back(Vec3b((uchar)b, (uchar)g, (uchar)r));
-	}
-	// Create the result image
-	Mat dst = Mat::zeros(markers.size(), CV_8UC3);
-	// Fill labeled objects with random colors
-	for (int i = 0; i < markers.rows; i++)
-	{
-		for (int j = 0; j < markers.cols; j++)
-		{
-			int index = markers.at<int>(i, j);
-			if (index > 0 && index <= static_cast<int>(contours.size()))
-			{
-				dst.at<Vec3b>(i, j) = colors[index - 1];
-			}
-		}
-	}
-	// Visualize the final image
-	imshow("Final Result", dst);
-	waitKey(0);
-	fres = dst;
+	//compute the sharpe image
+	Mat laplacina_image, sharped_image;
+	filter2D(input_image, laplacina_image, CV_32F, kernel);
+
+	input_image.convertTo(sharped_image, CV_32F);
+	Mat result_image = sharped_image - laplacina_image;
+
+
+	// convert back to 8bits gray scale
+	result_image.convertTo(result_image, CV_8UC3);
+	laplacina_image.convertTo(laplacina_image, CV_8UC3);
+
+	
+	//compute the adaptive threshold
+	Mat binary_image;
+	cvtColor(result_image, binary_image, COLOR_BGR2GRAY);
+	adaptiveThreshold(binary_image, binary_image, 250, BORDER_REPLICATE, THRESH_BINARY, 111, 50);
+
+
+	// Perform the distance transform algorithm
+	Mat distance_image;
+	distanceTransform(binary_image, processed_image, DIST_L2, 3);
+
+
+	// Normalize the distance image
+	normalize(processed_image, processed_image, 0, 30, NORM_MINMAX);
+
+	//Resize image in order to speed up
+	cvtColor(processed_image, processed_image, COLOR_GRAY2BGR);
+	resize(processed_image, processed_image, Size(size_processed_image, size_processed_image), INTER_AREA);
+	
+	//GaussianBlur(bin, bin, Size(3,3), 5,5, BORDER_DEFAULT);
+
+	cout << "Preprocessing complited " << endl;
 }
 
 void printError(string error)
 {
 	printf("\nERROR: %s \n\n", error);
 	exit(1);
-}
-
-void start(Timer timer) {
-	timer.start = ((double)clock() / (double)CLK_TCK);
-}
-
-double stop(Timer timer) {
-	// Get the time
-	timer.stop = ((double)clock() / (double)CLK_TCK);
-	double time = timer.stop - timer.start;
-	return time;
 }

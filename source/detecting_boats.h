@@ -3,7 +3,6 @@
 #include <opencv2/ximgproc/segmentation.hpp>
 #include <thread>
 #include <assert.h> 
-
 #include <fstream>
 #include <iostream>
 
@@ -17,25 +16,35 @@ typedef struct {
 	double stop;
 } Timer;
 
-// Start the timer
-void start(Timer timer);
+//verify if the input arguments are given in the right way
+void checkInput(int argc, char** argv, vector<String> &paths, string &testIoU);
 
-// Stop the timer, free the struct and return the time spent
-double stop(Timer timer);
+//detecting phase
+void detect(Net model, string path, string testIoU, double threshold, int size_processed_image);
 
-void parsing(string testIoU, string name_image, vector<Rect> &bb_in);
+//parse the input file IOU given in input
+void parsingInputIOU(string testIoU, string name_image, vector<Rect> &bounding_box_input);
 
+//function used for print the errors
 void printError(string error);
 
-//Computing the IOU given two boundary box
-double IoU(Rect boxA, Rect boxB);
+//computing the IOU given two boundary box
+double iou(Rect boxA, Rect boxB);
 
-void checkDisplayIoU(Mat &imOut, vector<Rect> bounday_box, vector<int> indices, vector<Rect> bb_in);
+//compute the non-maxima suppresion and drawing the values
+void NMSandDrawing(Mat &output_image, vector<int> &indices, vector<Rect> bounding_box, vector<float> scores);
 
-void wt(Mat src, Mat &fres, Mat &bin);
+//given the regions found predict them
+void predictRegions(Mat &image, Net model, vector<Rect> &bounding_box, vector<float> &scores, vector<Rect> rects, int size_processed_image, double threshold);
 
-void preprocess_image(Mat input, Mat &result, double sigma, Range hue_range, Range value_range, int delta_brightness);
+//compute the selective search approch
+void selectiveSearch(Mat image, vector<Rect> &rects, char method);
 
-//void NN(double th, int a, Mat imOut, Net model, vector<Rect> rects, vector<Rect> &bounday_box, vector<float> &scores);
+//check the IoU and then display the value
+void checkDisplayIoU(Mat &output_image, vector<Rect> bounday_box, vector<int> indices, vector<Rect> bounding_box_input);
 
-void predict(Net model, Mat &image, Rect rect, double th, vector<Rect> &bounday_box, vector<float> &scores);
+//sequence of functions for upgrade the input image
+void preprocessig(Mat input_image, Mat &processed_image, int size_processed_image);
+
+//single prediction of a region
+void regionPrediction(Net model, Mat &image, Rect rect, double threshold, vector<Rect> &bounding_box, vector<float> &scores);
