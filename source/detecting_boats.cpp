@@ -1,25 +1,25 @@
 #include "detecting_boats.h"
 
+const string pb_model = "C:/data/model50/model.pb";
+const string pbtxt_model = "C:/data/model50/model.pbtxt";
+
 int main(int argc, char** argv)
 {
-	string testIoU = "C:/data/test_IoU.txt";
-	//const string testIoU = "";
-	const string pb_model = "C:/data/model21/model.pb";
-	const string pbtxt_model = "C:/data/model21/model.pbtxt";
 	//const string img_path = "C:/data/train/20130412_153327_37259.jpg";   //20130412_153327_37259.jpg";20130412_084036_47574
 	//const string directory = "C:/data/venice_dataset/venice_dataset/*";
 	//const string directory = "C:/data/Kaggle_ships/*";
-	
-	string directory = "C:/data/venice_dataset/venice_dataset/*";
-	vector<String> paths;
-	glob(directory, paths);
+	//string directory = "C:/data/venice_dataset/venice_dataset/* C:/data/test_IoU.txt";
 
+	//load the neural network
 	Net model = readNetFromTensorflow(pb_model, pbtxt_model);
+	 
+	vector<String> paths;
+	string testIoU;
+	checkInput(argc, argv, paths, testIoU);
 
-	//checkInput(argc, argv, paths, testIoU);
-	int size_processed_image = 124;
-	double threshold = 0.93;
-
+	//size of the image before the preprocessing and the threshold for selecting boat
+	int size_processed_image = 150; //124
+	double threshold = 0.70;
 	//detecting images 
 	for (String path : paths)
 	{
@@ -48,6 +48,15 @@ void detect(Net model, string path, string testIoU, double threshold, int size_p
 	selectiveSearch(processed_image, rects, 'F');
 
 
+	//equalization using the histogram
+	//GaussianBlur(output_image, output_image, Size(3, 3), 5, 5, BORDER_DEFAULT);
+	//GaussianBlur(output_image, output_image, Size(3, 3), 3, 3, BORDER_DEFAULT);
+	//Mat equalized_image;
+	//cvtColor(output_image, equalized_image, COLOR_BGR2GRAY);
+	//equalizeHist(equalized_image, equalized_image);
+	//cvtColor(equalized_image, output_image, COLOR_GRAY2BGR);
+	
+	
 	//predict the regions
 	vector<Rect> bounding_box;
 	vector<float> scores;
@@ -77,8 +86,9 @@ void detect(Net model, string path, string testIoU, double threshold, int size_p
 
 void checkInput(int argc, char** argv, vector<String> &paths, string &testIoU) {
 
-	if (argc == 0)
-		printError(" Usage: C:\file\venice_dataset\* -F C:\file\IoU.txt");
+	//usage -> C:\file\venice_dataset\* C:\file\IoU.txt"
+	if (argc < 2)
+		printError("checkInput: missing or input file wrong, usage -> directory or image and IoU file (not mandatory)");
 
 	//save the directory
 	string directory = argv[1];
@@ -88,7 +98,7 @@ void checkInput(int argc, char** argv, vector<String> &paths, string &testIoU) {
 
 	//save testIoU if it is given
 	if (argc == 3)
-		testIoU = argv[3];
+		testIoU = argv[2];
 	else
 		testIoU = "";
 
@@ -96,7 +106,7 @@ void checkInput(int argc, char** argv, vector<String> &paths, string &testIoU) {
 
 void NMSandDrawing(Mat &output_image, vector<int> &indices, vector<Rect> bounding_box, vector<float> scores) {
 
-	NMSBoxes(bounding_box, scores, 0.3f, 0.05f, indices);
+	NMSBoxes(bounding_box, scores, 0.3f, 0.03f, indices);
 	for (size_t i = 0; i < indices.size(); i++) {
 		Rect box = bounding_box[indices[i]];
 		rectangle(output_image, box, Scalar(0, 255, 0));
@@ -172,7 +182,7 @@ void parsingInputIOU(string testIoU, string name_image, vector<Rect> &bounding_b
 	stringstream check_name_input(name_image);
 	while (getline(check_name_input, intermediate, '\\'))
 		tokens.push_back(intermediate);
-	name_image = tokens[1];
+	name_image = tokens[1 ];
 
 	//read the lines
 	vector<string> labeled_images;
@@ -251,13 +261,21 @@ void checkDisplayIoU(Mat &output_image, vector<Rect> bounding_box, vector<int> i
 void regionPrediction(Net model, Mat &image, Rect rect, double th, vector<Rect> &bounday_box, vector<float> &scores){
 
 	//set blob using the input image
+	//Mat equalized_image;
+	//Mat out;
+	//cvtColor(image(rect), equalized_image, COLOR_BGR2GRAY);
+	//equalizeHist(equalized_image, equalized_image);
+	//cvtColor(equalized_image, out, COLOR_GRAY2BGR);
+
+	//GaussianBlur(image(rect), out, Size(3, 3), 3, 3, BORDER_DEFAULT);
+
 	Mat blob = blobFromImage(image(rect), 1.0, Size(224, 224));
 	model.setInput(blob);	
 
 	Mat output = model.forward();
 	if (output.at<float>(0, 0) > th) {
 		bounday_box.push_back(rect);
-		rectangle(image, rect, Scalar(0, 0, 255));
+		//rectangle(image, rect, Scalar(0, 0, 255));
 		scores.push_back(output.at<float>(0, 0));
 	}
 
@@ -298,7 +316,7 @@ void preprocessig(Mat input_image, Mat &processed_image, int size_processed_imag
 		printError("Preprocessing: Input 'size_processed_image' too small or too high");
 
 	//smooth image using the Gaussian filter
-	GaussianBlur(input_image, input_image, Size(7, 7), 9, 9, BORDER_DEFAULT);
+	GaussianBlur(input_image, input_image, Size(7, 7), 11, 11, BORDER_DEFAULT);
 
 	//equalization using the histogram
 	//Mat equalized_image;
@@ -348,13 +366,14 @@ void preprocessig(Mat input_image, Mat &processed_image, int size_processed_imag
 	cvtColor(processed_image, processed_image, COLOR_GRAY2BGR);
 	resize(processed_image, processed_image, Size(size_processed_image, size_processed_image), INTER_AREA);
 	
-	//GaussianBlur(bin, bin, Size(3,3), 5,5, BORDER_DEFAULT);
-
-	cout << "Preprocessing complited " << endl;
+	//GaussianBlur(processed_image, processed_image, Size(3,3), 5,5, BORDER_DEFAULT);
+	imshow("Output", processed_image);
+	waitKey(0);
+	cout << "Preprocessing completed" << endl;
 }
 
 void printError(string error)
 {
-	printf("\nERROR: %s \n\n", error);
+	cout << "\n ERROR: " << error << endl;
 	exit(1);
 }
