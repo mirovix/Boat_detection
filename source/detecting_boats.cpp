@@ -47,15 +47,6 @@ void detect(Net model, string path, string testIoU, double threshold, int size_p
 	vector<Rect> rects;
 	selectiveSearch(processed_image, rects, 'F');
 
-
-	//equalization using the histogram
-	//GaussianBlur(output_image, output_image, Size(3, 3), 5, 5, BORDER_DEFAULT);
-	//GaussianBlur(output_image, output_image, Size(3, 3), 3, 3, BORDER_DEFAULT);
-	//Mat equalized_image;
-	//cvtColor(output_image, equalized_image, COLOR_BGR2GRAY);
-	//equalizeHist(equalized_image, equalized_image);
-	//cvtColor(equalized_image, output_image, COLOR_GRAY2BGR);
-	
 	
 	//predict the regions
 	vector<Rect> bounding_box;
@@ -261,14 +252,6 @@ void checkDisplayIoU(Mat &output_image, vector<Rect> bounding_box, vector<int> i
 void regionPrediction(Net model, Mat &image, Rect rect, double th, vector<Rect> &bounday_box, vector<float> &scores){
 
 	//set blob using the input image
-	//Mat equalized_image;
-	//Mat out;
-	//cvtColor(image(rect), equalized_image, COLOR_BGR2GRAY);
-	//equalizeHist(equalized_image, equalized_image);
-	//cvtColor(equalized_image, out, COLOR_GRAY2BGR);
-
-	//GaussianBlur(image(rect), out, Size(3, 3), 3, 3, BORDER_DEFAULT);
-
 	Mat blob = blobFromImage(image(rect), 1.0, Size(224, 224));
 	model.setInput(blob);	
 
@@ -318,12 +301,6 @@ void preprocessig(Mat input_image, Mat &processed_image, int size_processed_imag
 	//smooth image using the Gaussian filter
 	GaussianBlur(input_image, input_image, Size(7, 7), 11, 11, BORDER_DEFAULT);
 
-	//equalization using the histogram
-	//Mat equalized_image;
-	//cvtColor(input_image, equalized_image, COLOR_BGR2GRAY);
-	//equalizeHist(equalized_image, equalized_image);
-	//cvtColor(equalized_image, input_image, COLOR_GRAY2BGR);
-
 
 	//change the background from white to black since performs better during the use of Distance Transform
 	Mat mask;
@@ -366,9 +343,6 @@ void preprocessig(Mat input_image, Mat &processed_image, int size_processed_imag
 	cvtColor(processed_image, processed_image, COLOR_GRAY2BGR);
 	resize(processed_image, processed_image, Size(size_processed_image, size_processed_image), INTER_AREA);
 	
-	//GaussianBlur(processed_image, processed_image, Size(3,3), 5,5, BORDER_DEFAULT);
-	imshow("Output", processed_image);
-	waitKey(0);
 	cout << "Preprocessing completed" << endl;
 }
 
