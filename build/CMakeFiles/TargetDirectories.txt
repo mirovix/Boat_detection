@@ -1,3 +1,0 @@
-C:/Users/Miro1/OneDrive - Università degli Studi di Padova/Surface/Desktop/Project_CV/CV_final_project/build/CMakeFiles/detecting_boats.dir
-C:/Users/Miro1/OneDrive - Università degli Studi di Padova/Surface/Desktop/Project_CV/CV_final_project/build/CMakeFiles/ALL_BUILD.dir
-C:/Users/Miro1/OneDrive - Università degli Studi di Padova/Surface/Desktop/Project_CV/CV_final_project/build/CMakeFiles/ZERO_CHECK.dir
