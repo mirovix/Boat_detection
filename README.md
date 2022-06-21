@@ -14,12 +14,12 @@ Args elements for the project : "images_folder" "txt file for IOU performance"
 N.B. the second argument is optional
 
 # Directory :
--NoteLab5.pdf
--source
-	-CMakeList.txt
-	-detecting_boats.cpp
-	-detecting_boats.h
-	-training_boat.py
-	-training_boat.ipynb
-	-model.pb
-	-model.pbtxt
+- NoteLab5.pdf
+- source
+	- CMakeList.txt
+	- detecting_boats.cpp
+	- detecting_boats.h
+	- training_boat.py
+	- training_boat.ipynb
+	- model.pb
+	- model.pbtxt
