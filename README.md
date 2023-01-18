@@ -1,4 +1,4 @@
-# CV_final_project
+# Boat Detection
 Final project for Computer vision course, Computer Engineering, IA &amp; Robotics, 2021
 
 ## Build the 'source' directory, all the files (source code and CMakeList etc.) are inside it.
